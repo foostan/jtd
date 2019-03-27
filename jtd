@@ -1,0 +1,79 @@
+#!/usr/bin/env variant
+
+parameters:
+  - name: project
+    type: string
+    description: project name
+  - name: assignee
+    type: string
+    description: assignee name
+  - name: no_cache
+    type: boolean
+    default: false
+
+mixins:
+  parse_parameters: &parse_parameters |
+    project={{ get "project" }}
+    assignee={{ get "assignee" }}
+    no_cache={{ get "no_cache" }}
+    cache_dir=.jtd/cache
+    cache_file_path="${cache_dir}/list-${project}-${assignee}"
+
+  fetch_issues: &fetch_issues |
+    mkdir -p $cache_dir
+    ls $cashe_file_path > /dev/null 2>&1
+    if [ $? -ne 0 ] || [ $no_cache = "true" ]; then
+      jira list -p $project -a $assignee -t json > $cache_file_path
+    fi
+
+  force_fetch_issues: &force_fetch_issues |
+    mkdir -p $cache_dir
+    jira list -p $project -a $assignee -t json > $cache_file_path
+
+  select_issue_id: &select_issue_id |
+    issue_id=`cat ${cache_file_path} \
+      | jq -r '.issues[] | [.id, .fields.status.name, .fields.summary] | join(" | ")' | peco | awk -F '|' '{print $1}'`
+    if [ "$issue_id" = "" ]; then
+      exit 0
+    fi
+
+tasks:
+  list:
+    description: List tasks
+    script:
+      - *parse_parameters
+      - *fetch_issues
+      - |
+        cat ${cache_file_path} | jq -r '.issues[] | [.id, .fields.status.name, .fields.summary] | join(" | ")'
+  todo:
+    script:
+      - *parse_parameters
+      - *fetch_issues
+      - *select_issue_id
+      - |
+        jira transition "To Do" $issue_id --noedit
+      - *force_fetch_issues
+  start:
+    script:
+      - *parse_parameters
+      - *fetch_issues
+      - *select_issue_id
+      - |
+        jira transition "進行中" $issue_id --noedit
+      - *force_fetch_issues
+  done:
+    parameters:
+      - name: time
+        type: integer
+        default: 0
+    script:
+      - *parse_parameters
+      - *fetch_issues
+      - *select_issue_id
+      - |
+        time={{ get "time" }}
+        if [ $time -ne 0 ]; then
+          jira worklog add $issue_id -T $time --noedit
+        fi
+        jira transition "完了" $issue_id --noedit
+      - *force_fetch_issues
