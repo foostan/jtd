@@ -21,7 +21,7 @@ mixins:
 
   fetch_issues: &fetch_issues |
     mkdir -p $cache_dir
-    ls $cashe_file_path > /dev/null 2>&1
+    ls $cache_file_path > /dev/null 2>&1
     if [ $? -ne 0 ] || [ $no_cache = "true" ]; then
       jira list -p $project -a $assignee -t json > $cache_file_path
     fi
