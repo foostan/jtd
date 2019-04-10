@@ -38,6 +38,48 @@ mixins:
     fi
 
 tasks:
+  create:
+    parameters:
+      - name: summary
+        type: string
+        description: Summary of task
+      - name: description
+        type: string
+        description: Description of task
+        default: ""
+      - name: priority
+        type: string
+        description: Priority of task
+        default: "None"
+      - name: board-id
+        type: integer
+        description: Board ID for task
+    script:
+      - *parse_parameters
+      - |
+        summary={{ get "summary" }}
+        description={{ get "description" }}
+        priority={{ get "priority" }}
+        board_id={{ get "board-id" }}
+
+        sprint_id=`jira request -M GET "/rest/agile/1.0/board/$board_id/sprint?state=active" | jq '.values[].id'`
+        epic_id=`jira request -M GET "/rest/agile/1.0/board/$board_id/epic?done=false" | jq -r '.values[] | [.id, .name] | join(" | ")' | peco | awk -F ' | ' '{print $1}'`
+
+        result=`jira create \
+          -p $project \
+          -i Ask \
+          -o summary="$summary" \
+          -o description="$description" \
+          -o priority="$priority" \
+          -o assignee="$assignee" \
+          --noedit`
+        echo "$result"
+
+        issue_name=`echo "$result" | awk '{print $2}'`
+        jira request -M POST '/rest/agile/1.0/sprint/'$sprint_id'/issue' '{"issues": ["'$issue_name'"]}' > /dev/null 2>&1
+        jira request -M POST '/rest/agile/1.0/epic/'$epic_id'/issue' '{"issues": ["'$issue_name'"]}' > /dev/null 2>&1
+      - *force_fetch_issues
+
   list:
     description: List tasks
     script:
